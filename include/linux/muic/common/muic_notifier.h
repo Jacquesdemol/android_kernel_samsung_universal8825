@@ -25,13 +25,18 @@
 #define __MUIC_NOTIFIER_H__
 
 #include <linux/muic/common/muic.h>
+#if IS_MODULE(CONFIG_CHARGER_S2MU106)
+#include <linux/muic/common/muic_param.h>
+#endif
+
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
 #include <linux/usb/typec/common/pdic_notifier.h>
 #endif
 
 /* MUIC notifier call chain command */
-typedef enum {
-	MUIC_NOTIFY_CMD_DETACH	= 0,
+typedef enum
+{
+	MUIC_NOTIFY_CMD_DETACH = 0,
 	MUIC_NOTIFY_CMD_ATTACH,
 	MUIC_NOTIFY_CMD_LOGICALLY_DETACH,
 	MUIC_NOTIFY_CMD_LOGICALLY_ATTACH,
@@ -43,7 +48,8 @@ typedef enum {
 
 /* MUIC notifier call sequence,
  * largest priority number device will be called first. */
-typedef enum {
+typedef enum
+{
 	MUIC_NOTIFY_DEV_DOCK = 0,
 	MUIC_NOTIFY_DEV_MHL,
 	MUIC_NOTIFY_DEV_USB,
@@ -58,7 +64,8 @@ typedef enum {
 	MUIC_NOTIFY_DEV_CABLE_DATA,
 } muic_notifier_device_t;
 
-struct muic_notifier_struct {
+struct muic_notifier_struct
+{
 	muic_attached_dev_t attached_dev;
 	muic_notifier_cmd_t cmd;
 #if IS_ENABLED(CONFIG_PDIC_NOTIFIER)
@@ -70,14 +77,16 @@ struct muic_notifier_struct {
 	struct blocking_notifier_head notifier_call_chain;
 };
 
-#define MUIC_NOTIFIER_BLOCK(name)	\
-	struct notifier_block (name)
+#define MUIC_NOTIFIER_BLOCK(name) \
+	struct notifier_block(name)
 
 /* muic notifier init/notify function
  * this function is for JUST MUIC device driver.
  * DON'T use function anywhrer else!!
  */
+#if IS_MODULE(CONFIG_CHARGER_SM5714)
 extern struct device *switch_device;
+#endif
 
 extern void muic_notifier_attach_attached_dev(muic_attached_dev_t new_dev);
 extern void muic_notifier_detach_attached_dev(muic_attached_dev_t cur_dev);
@@ -85,18 +94,22 @@ extern void muic_pdic_notifier_attach_attached_dev(muic_attached_dev_t new_dev);
 extern void muic_pdic_notifier_detach_attached_dev(muic_attached_dev_t new_dev);
 extern void muic_notifier_logically_attach_attached_dev(muic_attached_dev_t new_dev);
 extern void muic_notifier_logically_detach_attached_dev(muic_attached_dev_t cur_dev);
+#if IS_MODULE(CONFIG_CHARGER_SM5714)
 extern void vt_muic_notifier_attach_attached_dev(muic_attached_dev_t new_dev);
 extern void vt_muic_notifier_detach_attached_dev(muic_attached_dev_t cur_dev);
+#else
+extern void muic_notifier_chg_off(muic_attached_dev_t new_dev);
+#endif
 
 #if IS_ENABLED(CONFIG_PDIC_SLSI_NON_MCU)
 extern int muic_pdic_notifier_register(struct notifier_block *nb,
-		notifier_fn_t notifier, muic_notifier_device_t listener);
+									   notifier_fn_t notifier, muic_notifier_device_t listener);
 extern int muic_pdic_notifier_unregister(struct notifier_block *nb);
 #endif
 /* muic notifier register/unregister API
  * for used any where want to receive muic attached device attach/detach. */
 extern int muic_notifier_register(struct notifier_block *nb,
-		notifier_fn_t notifier, muic_notifier_device_t listener);
+								  notifier_fn_t notifier, muic_notifier_device_t listener);
 extern int muic_notifier_unregister(struct notifier_block *nb);
 
 /* Choose a proper noti. interface for a test */
