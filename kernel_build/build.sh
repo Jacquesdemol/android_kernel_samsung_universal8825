@@ -23,23 +23,16 @@ OUTDIR="$(pwd)/out"
 MODULES_OUTDIR="$(pwd)/modules_out"
 TMPDIR="$(pwd)/kernel_build/tmp"
 
-IN_PLATFORM="$(pwd)/kernel_build/vboot_platform"
-IN_DLKM="$(pwd)/kernel_build/vboot_dlkm"
 IN_DTB="$OUTDIR/arch/arm64/boot/dts/exynos/s5e8825.dtb"
 
 PLATFORM_RAMDISK_DIR="$TMPDIR/ramdisk_platform"
 DLKM_RAMDISK_DIR="$TMPDIR/ramdisk_dlkm"
-PREBUILT_RAMDISK="$(pwd)/kernel_build/boot/ramdisk"
 MODULES_DIR="$DLKM_RAMDISK_DIR/lib/modules"
 
 MKBOOTIMG="$(pwd)/kernel_build/mkbootimg/mkbootimg.py"
 MKDTBOIMG="$(pwd)/kernel_build/dtb/mkdtboimg.py"
 
-OUT_KERNELZIP="$(pwd)/kernel_build/ExynosUnbound-${XY_VERSION}_a33x.zip"
-OUT_KERNELTAR="$(pwd)/kernel_build/ExynosUnbound-${XY_VERSION}_a33x.tar"
 OUT_KERNEL="$OUTDIR/arch/arm64/boot/Image"
-OUT_BOOTIMG="$(pwd)/kernel_build/zip/boot.img"
-OUT_VENDORBOOTIMG="$(pwd)/kernel_build/zip/vendor_boot.img"
 OUT_DTBIMAGE="$TMPDIR/dtb.img"
 
 # Kernel-side
@@ -58,7 +51,7 @@ bring_zfs() {
   echo 'MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);' >> fs/zfs/os/linux/zfs/zfs_ioctl_os.c
   echo 'MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);' >> fs/zfs/os/linux/spl/spl-generic.c
   grep -r CDDL include/zfs/|grep -v '\*'|grep -v bsd|cut -d':' -f1|while read FL ; do sed -i 's|ZFS_META_LICENSE = CDDL|ZFS_META_LICENSE = GPL|; s|#define ZFS_META_LICENSE "CDDL"|#define ZFS_META_LICENSE "GPL"|' $FL; done
-  echo "$(grep CONFIG_ZFS arch/arm64/configs/a33x_defconfig)" >> "$CDIR/out/.config" "$CDIR/out/.config.old"
+  echo "$(grep CONFIG_ZFS arch/arm64/configs/a53x_defconfig)" >> "$CDIR/out/.config" "$CDIR/out/.config.old"
   echo ' - OK'
 }
 
@@ -93,118 +86,136 @@ if [ ! -d "$PARENT_DIR/build-tools" ]; then
     git clone https://android.googlesource.com/platform/prebuilts/build-tools "$PARENT_DIR/build-tools" --depth=1
 fi
 
-make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS a33x_defconfig >/dev/null
-make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS modules_prepare >/dev/null
-if [ ! -d "$(pwd)/zfs" ]; then
-  bring_zfs
-fi
-make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS dtbs >/dev/null
-make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS >/dev/null
-make -j$(nproc --all) -C $(pwd) O=out INSTALL_MOD_STRIP="--strip-debug --keep-section=.ARM.attributes" INSTALL_MOD_PATH="$MODULES_OUTDIR" modules_install >/dev/null
+build() {
+    echo "Building $1"
+    IN_PLATFORM="$(pwd)/kernel_build/$1/vboot_platform"
+    IN_DLKM="$(pwd)/kernel_build/$1/vboot_dlkm"
+    PREBUILT_RAMDISK="$(pwd)/kernel_build/$1/boot/ramdisk"
 
-rm -rf "$TMPDIR"
-rm -f "$OUT_BOOTIMG"
-rm -f "$OUT_VENDORBOOTIMG"
-mkdir "$TMPDIR"
-mkdir -p "$MODULES_DIR/0.0"
-mkdir "$PLATFORM_RAMDISK_DIR"
+    OUT_KERNELZIP="$(pwd)/kernel_build/$1/ExynosUnbound-${XY_VERSION}_$1.zip"
+    OUT_KERNELTAR="$(pwd)/kernel_build/$1/ExynosUnbound-${XY_VERSION}_$1.tar"
+    OUT_BOOTIMG="$(pwd)/kernel_build/$1/zip/boot.img"
+    OUT_VENDORBOOTIMG="$(pwd)/kernel_build/$1/zip/vendor_boot.img"
 
-cp -rf "$IN_PLATFORM"/* "$PLATFORM_RAMDISK_DIR/"
-mkdir "$PLATFORM_RAMDISK_DIR/first_stage_ramdisk"
-cp -f "$PLATFORM_RAMDISK_DIR/fstab.s5e8825" "$PLATFORM_RAMDISK_DIR/first_stage_ramdisk/fstab.s5e8825"
-
-if ! find "$MODULES_OUTDIR/lib/modules" -mindepth 1 -type d | read; then
-    echo "Unknown error!"
-    exit 1
-fi
-
-missing_modules=""
-
-for module in $(cat "$IN_DLKM/modules.load"); do
-    i=$(find "$MODULES_OUTDIR/lib/modules" -name $module);
-    if [ -f "$i" ]; then
-        cp -f "$i" "$MODULES_DIR/0.0/$module"
-    else
-	missing_modules="$missing_modules $module"
+    make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS $1_defconfig >/dev/null
+    make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS modules_prepare >/dev/null
+    if [ ! -d "$(pwd)/zfs" ]; then
+    bring_zfs
     fi
-done
+    make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS dtbs >/dev/null
+    make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS >/dev/null
+    make -j$(nproc --all) -C $(pwd) O=out INSTALL_MOD_STRIP="--strip-debug --keep-section=.ARM.attributes" INSTALL_MOD_PATH="$MODULES_OUTDIR" modules_install >/dev/null
 
-if [ "$missing_modules" != "" ]; then
-        echo "ERROR: the following modules were not found: $missing_modules"
-	exit 1
-fi
+    rm -rf "$TMPDIR"
+    rm -f "$OUT_BOOTIMG"
+    rm -f "$OUT_VENDORBOOTIMG"
+    mkdir "$TMPDIR"
+    mkdir -p "$MODULES_DIR/0.0"
+    mkdir "$PLATFORM_RAMDISK_DIR"
 
-depmod 0.0 -b "$DLKM_RAMDISK_DIR"
-sed -i 's/\([^ ]\+\)/\/lib\/modules\/\1/g' "$MODULES_DIR/0.0/modules.dep"
-cd "$MODULES_DIR/0.0"
-for i in $(find . -name "modules.*" -type f); do
-    if [ $(basename "$i") != "modules.dep" ] && [ $(basename "$i") != "modules.softdep" ] && [ $(basename "$i") != "modules.alias" ]; then
-        rm -f "$i"
+    cp -rf "$IN_PLATFORM"/* "$PLATFORM_RAMDISK_DIR/"
+    mkdir "$PLATFORM_RAMDISK_DIR/first_stage_ramdisk"
+    cp -f "$PLATFORM_RAMDISK_DIR/fstab.s5e8825" "$PLATFORM_RAMDISK_DIR/first_stage_ramdisk/fstab.s5e8825"
+
+    if ! find "$MODULES_OUTDIR/lib/modules" -mindepth 1 -type d | read; then
+        echo "Unknown error!"
+        exit 1
     fi
+
+    missing_modules=""
+
+    for module in $(cat "$IN_DLKM/modules.load"); do
+        i=$(find "$MODULES_OUTDIR/lib/modules" -name $module);
+        if [ -f "$i" ]; then
+            cp -f "$i" "$MODULES_DIR/0.0/$module"
+        else
+        missing_modules="$missing_modules $module"
+        fi
+    done
+
+    if [ "$missing_modules" != "" ]; then
+            echo "ERROR: the following modules were not found: $missing_modules"
+        exit 1
+    fi
+
+    depmod 0.0 -b "$DLKM_RAMDISK_DIR"
+    sed -i 's/\([^ ]\+\)/\/lib\/modules\/\1/g' "$MODULES_DIR/0.0/modules.dep"
+    cd "$MODULES_DIR/0.0"
+    for i in $(find . -name "modules.*" -type f); do
+        if [ $(basename "$i") != "modules.dep" ] && [ $(basename "$i") != "modules.softdep" ] && [ $(basename "$i") != "modules.alias" ]; then
+            rm -f "$i"
+        fi
+    done
+    cd "$DIR"
+
+    cp -f "$IN_DLKM/modules.load" "$MODULES_DIR/0.0/modules.load"
+    mv "$MODULES_DIR/0.0"/* "$MODULES_DIR/"
+    rm -rf "$MODULES_DIR/0.0"
+
+    echo "Building dtb image..."
+    python2 "$MKDTBOIMG" create "$OUT_DTBIMAGE" --custom0=0x00000000 --custom1=0xff000000 --version=0 --page_size=2048 "$IN_DTB" || exit 1
+
+    echo "Building boot image..."
+
+    $MKBOOTIMG --header_version 4 \
+        --kernel "$OUT_KERNEL" \
+        --output "$OUT_BOOTIMG" \
+        --ramdisk "$PREBUILT_RAMDISK" \
+        --os_version 12.0.0 \
+        --os_patch_level 2024-06 || exit 1
+
+    echo "Done!"
+    echo "Building vendor_boot image..."
+
+    cd "$DLKM_RAMDISK_DIR"
+    find . | cpio --quiet -o -H newc -R root:root | lz4 -9cl > ../ramdisk_dlkm.lz4
+    cd ../ramdisk_platform
+    find . | cpio --quiet -o -H newc -R root:root | lz4 -9cl > ../ramdisk_platform.lz4
+    cd ..
+    echo "buildtime_bootconfig=enable" > bootconfig
+
+    $MKBOOTIMG --header_version 4 \
+        --vendor_boot "$OUT_VENDORBOOTIMG" \
+        --vendor_bootconfig "$(pwd)/bootconfig" \
+        --dtb "$OUT_DTBIMAGE" \
+        --vendor_ramdisk "$(pwd)/ramdisk_platform.lz4" \
+        --ramdisk_type dlkm \
+        --ramdisk_name dlkm \
+        --vendor_ramdisk_fragment "$(pwd)/ramdisk_dlkm.lz4" \
+        --os_version 12.0.0 \
+        --os_patch_level 2024-06 || exit 1
+
+    cd "$DIR"
+
+    echo "Done!"
+
+    echo "Building zip..."
+    cd "$(pwd)/kernel_build/$1/zip"
+    rm -f "$OUT_KERNELZIP"
+    brotli --quality=11 -c boot.img > boot.br
+    brotli --quality=11 -c vendor_boot.img > vendor_boot.br
+    zip -r9 -q "$OUT_KERNELZIP" META-INF boot.br vendor_boot.br
+    rm -f boot.br vendor_boot.br
+    cd "$DIR"
+    echo "Done! Output: $OUT_KERNELZIP"
+
+    echo "Building tar..."
+    cd "$(pwd)/kernel_build/$1"
+    rm -f "$OUT_KERNELTAR"
+    lz4 -c -12 -B6 --content-size "$OUT_BOOTIMG" > boot.img.lz4
+    lz4 -c -12 -B6 --content-size "$OUT_VENDORBOOTIMG" > vendor_boot.img.lz4
+    tar -cf "$OUT_KERNELTAR" boot.img.lz4 vendor_boot.img.lz4
+    cd "$DIR"
+    rm -f boot.img.lz4 vendor_boot.img.lz4
+    echo "Done! Output: $OUT_KERNELTAR"
+
+    echo "Cleaning..."
+    rm -f "${OUT_VENDORBOOTIMG}" "${OUT_BOOTIMG}"
+    kfinish
+
+}
+
+for device in a53x a33x
+do
+  build $device
 done
-cd "$DIR"
-
-cp -f "$IN_DLKM/modules.load" "$MODULES_DIR/0.0/modules.load"
-mv "$MODULES_DIR/0.0"/* "$MODULES_DIR/"
-rm -rf "$MODULES_DIR/0.0"
-
-echo "Building dtb image..."
-python2 "$MKDTBOIMG" create "$OUT_DTBIMAGE" --custom0=0x00000000 --custom1=0xff000000 --version=0 --page_size=2048 "$IN_DTB" || exit 1
-
-echo "Building boot image..."
-
-$MKBOOTIMG --header_version 4 \
-    --kernel "$OUT_KERNEL" \
-    --output "$OUT_BOOTIMG" \
-    --ramdisk "$PREBUILT_RAMDISK" \
-    --os_version 12.0.0 \
-    --os_patch_level 2024-06 || exit 1
-
-echo "Done!"
-echo "Building vendor_boot image..."
-
-cd "$DLKM_RAMDISK_DIR"
-find . | cpio --quiet -o -H newc -R root:root | lz4 -9cl > ../ramdisk_dlkm.lz4
-cd ../ramdisk_platform
-find . | cpio --quiet -o -H newc -R root:root | lz4 -9cl > ../ramdisk_platform.lz4
-cd ..
-echo "buildtime_bootconfig=enable" > bootconfig
-
-$MKBOOTIMG --header_version 4 \
-    --vendor_boot "$OUT_VENDORBOOTIMG" \
-    --vendor_bootconfig "$(pwd)/bootconfig" \
-    --dtb "$OUT_DTBIMAGE" \
-    --vendor_ramdisk "$(pwd)/ramdisk_platform.lz4" \
-    --ramdisk_type dlkm \
-    --ramdisk_name dlkm \
-    --vendor_ramdisk_fragment "$(pwd)/ramdisk_dlkm.lz4" \
-    --os_version 12.0.0 \
-    --os_patch_level 2024-06 || exit 1
-
-cd "$DIR"
-
-echo "Done!"
-
-echo "Building zip..."
-cd "$(pwd)/kernel_build/zip"
-rm -f "$OUT_KERNELZIP"
-brotli --quality=11 -c boot.img > boot.br
-brotli --quality=11 -c vendor_boot.img > vendor_boot.br
-zip -r9 -q "$OUT_KERNELZIP" META-INF boot.br vendor_boot.br
-rm -f boot.br vendor_boot.br
-cd "$DIR"
-echo "Done! Output: $OUT_KERNELZIP"
-
-echo "Building tar..."
-cd "$(pwd)/kernel_build"
-rm -f "$OUT_KERNELTAR"
-lz4 -c -12 -B6 --content-size "$OUT_BOOTIMG" > boot.img.lz4
-lz4 -c -12 -B6 --content-size "$OUT_VENDORBOOTIMG" > vendor_boot.img.lz4
-tar -cf "$OUT_KERNELTAR" boot.img.lz4 vendor_boot.img.lz4
-cd "$DIR"
-rm -f boot.img.lz4 vendor_boot.img.lz4
-echo "Done! Output: $OUT_KERNELTAR"
-
-echo "Cleaning..."
-rm -f "${OUT_VENDORBOOTIMG}" "${OUT_BOOTIMG}"
-kfinish
