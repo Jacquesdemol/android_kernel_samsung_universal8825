@@ -1,10 +1,12 @@
 #
 # MUIC devices
 #
+# a33x
 if CHARGER_S2MU106
-source "drivers/muic/common/a33x/Kconfig"
+source "drivers/muic/common/s2mu106/Kconfig"
 endif
 
+# a53x m33x
 if CHARGER_SM5714
-source "drivers/muic/common/a53x/Kconfig"
+source "drivers/muic/common/sm5714/Kconfig"
 endif
