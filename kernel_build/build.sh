@@ -1,6 +1,6 @@
 #!/bin/bash
 
-XY_VERSION="R3.1"
+XY_VERSION="R3.1-1-s5e8825"
 ZFS_VERSION="zfs-2.2.4"
 
 set -e
@@ -51,7 +51,7 @@ bring_zfs() {
   echo 'MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);' >> fs/zfs/os/linux/zfs/zfs_ioctl_os.c
   echo 'MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);' >> fs/zfs/os/linux/spl/spl-generic.c
   grep -r CDDL include/zfs/|grep -v '\*'|grep -v bsd|cut -d':' -f1|while read FL ; do sed -i 's|ZFS_META_LICENSE = CDDL|ZFS_META_LICENSE = GPL|; s|#define ZFS_META_LICENSE "CDDL"|#define ZFS_META_LICENSE "GPL"|' $FL; done
-  echo "$(grep CONFIG_ZFS arch/arm64/configs/a53x_defconfig)" >> "$CDIR/out/.config" "$CDIR/out/.config.old"
+  echo "$(grep CONFIG_ZFS arch/arm64/configs/$1_defconfig)" >> "$CDIR/out/.config" "$CDIR/out/.config.old"
   echo ' - OK'
 }
 
@@ -100,7 +100,7 @@ build() {
     make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS $1_defconfig >/dev/null
     make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS modules_prepare >/dev/null
     if [ ! -d "$(pwd)/zfs" ]; then
-    bring_zfs
+    bring_zfs $1
     fi
     make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS dtbs >/dev/null
     make -j$(nproc --all) -C $(pwd) O=out $BUILD_ARGS >/dev/null
@@ -215,7 +215,7 @@ build() {
 
 }
 
-for device in a53x a33x
+for device in m33x a53x a33x
 do
   build $device
 done
