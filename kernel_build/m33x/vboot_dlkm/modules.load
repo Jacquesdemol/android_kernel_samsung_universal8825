@@ -176,7 +176,6 @@ dw_mmc.ko
 dw_mmc-pltfm.ko
 dw_mmc-exynos-sec.ko
 leds-sm5714-fled.ko
-fmp-core.ko
 hid-a4tech.ko
 hid-axff.ko
 hid-belkin.ko
